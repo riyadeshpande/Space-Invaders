@@ -1,0 +1,459 @@
+import pygame
+import random
+import math
+from pygame import mixer
+
+# initialise the pygame
+pygame.init()
+
+# create screen of 800 pixels width and 600 pixels height
+screen = pygame.display.set_mode((800, 600))
+
+# background image
+background = pygame.image.load('background.jpeg')
+# using just this one line wont work, it'll apear just for a split second in the start
+# then disappear
+# because this isnt inside while loop
+# we need to persist it throughout our game, so add it to our while loop
+
+# Background Sound
+mixer.music.load('background.wav')
+mixer.music.play(-1) #if we dont write -1 inside play, it'll just play once
+# -1 will make sure it plays on loop continuously
+#mixer.music is used if we want to play a long audio
+
+# to play something as short as the bullet sound, we use mixer.sound
+
+# title and icon
+pygame.display.set_caption('Space Invaders')
+icon = pygame.image.load('ufo.png')
+pygame.display.set_icon(icon)  # our icon size is 32x32 pixels
+
+# Player:
+playerImg = pygame.image.load('player.png')
+# our player.png spaceship size is 64x64 pixels
+
+# defining the coordinates:
+# remember that coordinates range from 0 to 800 on x axis (left to right)
+# 0 to 600 on y axis (top to bottom)....***(top to bottom is 0 to 600, not bottom to top)
+
+playerX = 370
+playerY = 480
+
+# declaring variables to define amount of change in coordinates for moving of the spaceship:
+
+playerX_change = 0
+
+# Enemy:
+
+#for multiple enemies, we define a list
+enemyImg = []
+enemyX = []
+enemyY = []
+enemyX_change = [0.2, 0.3, 0.25, 0.4, 0.45]
+enemyY_change = [38, 39, 40, 41, 42]
+num_of_enemies = 5
+
+
+for i in range (num_of_enemies):
+    enemyImg.append(pygame.image.load('alien.png'))
+    enemyX.append(random.randint(0, 736))#800-64=736 (64 pixels image of enemy)
+    enemyY.append(random.randint(0, 380)) #from 480th pixel our spaceship starts. so 480-64=416. so lets start enemy before that just to keep a safe distance from spaceship
+    # the enemy should appear at random place every time we start a new game after the enemy
+    # also, after getting killed, it should respawn at random places
+    # hence we make use of random library
+
+   # enemyX_change = 0.3
+    # if we declare enemyX_change as 0 here, then the enemy wont move at all, no matter how many times the loop executes
+    # because movement of enemy isnt under any condition, it happens as long as game is on
+    # so enemyX+=enemyX_change will always give enemyX only and it wont move at all, so we give it a positive non zero value
+
+ #   enemyY_change = 40
+    # change in y is under the condition that the enemy hits a boundary
+    # after that, the value of y gets updated
+    # we dont declare change in y ahead, so we define and keep here only.
+
+
+# Bullet:
+bulletImg = pygame.image.load('bullet.png')
+bulletX = 0  # we define it as 0 here, we'll change it in the while loop
+# the x coordinate of bullet when ready, and after firing till the end, will be the same as where the spaceship is initially
+# the spaceship can move after firing, but the bullet's x coordinate remains same
+
+bulletY = 480
+# the initial position of spaceship (y coordinate) is 480
+# bullet will be fired from the top of spaceship
+
+bullet_state = 'ready'
+# ready state means you cant see the bullet on screen, it is ready to fire
+# fire state means the bullet is moving currently
+# we define these states to differentiate whether the bullet is in motion
+# or its not being fired at the moment
+# helps decide the movement dynamics of the bullet
+
+
+# bullet wont change coordinate in x direction, so no need of bulletX_change
+bulletY_change = 1.9
+# controls the speed with which the bullet moves in y direction
+# this value depends on the size of your image
+# for a bulky image, you might need a larger value above to maintain this same speed
+
+
+# Score
+
+score_value = 0 #score_value is int type variable
+font = pygame.font.Font('freesansbold.ttf', 28) #28 is the size
+
+textX = 10
+textY = 10
+
+#Game Over Text
+over_font = pygame.font.Font('freesansbold.ttf', 64)
+
+def show_score(x,y): #image is blitted directly, text is rendered then blitted
+    score = font.render("Score : " + str(score_value), True, (255, 255, 255))
+    #first parameter is the text which will be shown,
+    #second is string of score_value (typecasting)
+    #True is for displaying it on screen
+    #last parameter is for the colour of the font - RGB values
+    # 255,255,255 is white colour
+    screen.blit(score, (x,y))
+
+def game_over_text():
+    over_text = over_font.render("GAME OVER!", True, (255, 255, 255))
+    screen.blit(over_text, (200, 250))
+    #200x250 pixels is the middle of the screen
+
+
+# we don't want the player to ever disappear
+# we want it to always remain on screen
+# so we'll call the following function inside the while loop
+def player(x, y):
+    screen.blit(playerImg, (x, y))
+    # blit means to draw,
+    # so we're drawing the image of player on screen
+    # by using the method .blit, we are drawing player.png on our window
+    # our game window is also called as the surface of the window
+
+
+# (tip: ctrl+alt+L in pycharm will format your entire code so it looks good)
+
+# similarly for enemy:
+def enemy(x, y, i):
+    screen.blit(enemyImg[i], (x, y))
+
+
+# whenever we press spacebar, we want the bullet to shoot
+# so whenever we press spacebar, we will call the following function
+def fire_bullet(x, y):
+    global bullet_state  # to access the value of bullet_state from inside the function
+    bullet_state = 'fire'
+    screen.blit(bulletImg, (x + 16, y + 10))
+    # +16 will make sure the bullet fires from centre of the spaceship
+    # +10 will make the bullet go a little up while firing,
+    # so it looks like the bullet is coming from the mouth of spaceship, not the centre
+
+
+# we calculate the distance between enemy and bullet using distance between two points formula,
+# if that distance is less than a certain threshold, it means collision has occurred
+def isCollision(enemyX, enemyY, bulletX, bulletY):
+    if bullet_state == 'fire': #i wrote this condition here because, when the enemy came sufficiently down close to the spaceship,
+        #because of the below distance formula (we have already defined the default starting coordinates for the bullet when its in ready state),
+        #even without firing the bullet, the enemy went inside collision=True condition.
+        #we have not fired the bullet, yet the explosion sound is coming and score+=1 is getting exectued
+        #this is not correct, so we calculate distance, only when bullet_state is fire
+        distance = math.sqrt(math.pow(enemyX - bulletX, 2) + math.pow(enemyY - bulletY, 2))
+        if distance < 25: #25 number i got by trial error
+            return True
+
+
+# if we write just "while true: pass", then the game window will be hanged
+# there is no way even to close it
+# we will need to go to task manager to close it
+# this is because we haven't written the code of quitting the window in the loop
+# so anything that happens inside the game window is an event
+# pressing arrow keys, moving mouse, quitting, etc are events
+
+
+# while True:
+#   pass
+
+# instead of this, make a variable called running
+
+running = True
+
+
+# we will check if the cross button is pressed
+# if cross button is pressed, we will make value of running as False
+
+
+# this is an infinite game loop
+# wont close down on its own
+# until we give press the cross button
+
+# while running:
+#    for event in pygame.event.get():
+#        if event.type == pygame.QUIT:
+#            running = False
+
+# so this is how we check while the game is running,
+# if at any point, the cross button is pressed
+# running becomes False
+# and we come out of the loop
+
+# screen.fill((0, 0, 0))
+# 0,0,0 are R,G,B values, they can go from 0 to 255
+# 0,0,0 means black
+# if we want pure red, we do 255,0,0
+# light red- maybe 100,0,0
+# www.rapidtables.com will show you any colour's RGB values
+
+# now if we do screen.fill((255, 0, 0))
+# we wont get the desired red screen
+# screen still remains black as before
+# we need to use display update
+
+# screen.fill((255, 0, 0))
+# pygame.display.update()
+# now we'll get the red screen
+
+# lets keep it black for now:
+
+#   screen.fill((0,0,0))
+
+#   player()
+
+#   pygame.display.update()
+
+# everytime an event occurs; ie; we shoot a bullet
+# or spaceship moves etc, display of game should keep updating
+
+
+# lets rearrange and keep the screen.fill above everything:
+
+while running:
+    screen.fill((0, 0, 0))
+
+    # we put the background image line here
+    # we put is below the scree.fill so that it comes on top of the black screen
+    screen.blit(background, (0, 0))
+    # 0,0 is the point where the image should start from
+    # dont confuse it as the entire dimension of the image
+    # it is 0,0 and not 800,600.
+
+    # playerX+=0.1
+
+    # playerX+=0.1 will move the image of playerX to the right by 0.1 continuously as it is in while loop
+    # it will change the image position, but to our eyes it will seem like the spaceship is moving
+
+    # similarly if you do playerX-=0.1 it'll move the spaceship towards left
+
+    # if you do playerY-=0.1 it'll move the spaceship upward
+    # if you change 0.1 to 3, then it'll move too fast
+
+    # we also need to control our spaceship
+    # means if we press right arrow button on keyboard, it should move toward right
+    # similarly left
+
+    # so we need to check if every stroke is left or right
+    # and then accordingly do the action
+    # every time we press a key, it is called a keystroke event
+
+    for event in pygame.event.get():
+        # every event gets logged/stored into pygame.event.get()
+
+        if event.type == pygame.QUIT:
+            running = False
+            # this is a quit event
+
+        if event.type == pygame.KEYDOWN:
+            # above line will just check if any key on the keyboard has been pressed
+            # KEYDOWN means pressing of any key
+
+            # print("A key is pressed")
+
+            # now we have to check if the key pressed is left or right arrow and perform an action accordingly:
+
+            if event.key == pygame.K_LEFT:
+                playerX_change = -0.7
+
+            if event.key == pygame.K_RIGHT:
+                playerX_change = 0.7 #player change is greater than enemy change because we want our player to move faster than enemy
+
+            if event.key == pygame.K_SPACE:
+                # fire_bullet(playerX, bulletY)
+                # initially, the state of bullet is ready
+                # as soon as we press space bar, it calls the above function
+                # then the state becomes fire
+                # as soon as state becomes fire, it goes into the bullet loop defined below
+                # above function has given coordinates as playerX (inital x coordinate of spaceship) and bulletY (initial y coordinate of bullet defined above)
+                # so, to rectify this, we'll save the initial value of the x coordinate of spaceship in a variable
+
+                # bulletX = playerX
+                # then instead of giving playerX, which updates the value of x coordinate as the spaceship moves, we give bulletX as parameter to the fire_bullet function
+                # this will ensure that only the fixed initial value of the x coordinate of spaceship will go the fire_bullet function
+
+                # fire_bullet(bulletX, bulletY)
+
+                # if event.key == space condition will move the x coordinate of bullet if we press spacebar when the bullet is already fired
+                # so to rectify it, we add an if condition:
+                if bullet_state == 'ready':
+
+                    bullet_Sound = mixer.Sound('laser.wav')
+                    bullet_Sound.play()
+
+                    bulletX = playerX
+                    fire_bullet(bulletX, bulletY)
+                # so only when the bullet is in ready state, we can fire it
+                # so even if we press spacebar, nothing will happen if the bullet is already fired
+                # another bullet wont get fired before this one becomes in ready state again
+                # so now the x coordinate of bullet wont change even if we press spacebar after its fired
+
+
+
+        if event.type == pygame.KEYUP:
+            # above line will check if the key has been released
+            # KEYUP means releasing the pressed down key
+
+            if event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
+                playerX_change = 0
+                # when the key is released, we want the spaceship to stop moving
+                # so the change in the x value should be 0
+
+        # with the above code, the spaceship will move to left and right without restrictions
+        # after it reaches the edge of window, it'll just go out of the frame
+        # we need to define boundaries, so it doesn't move out of the screen
+
+        # so how to do that:
+        # everytime the spaceship goes toward extreme left and goes beyond 0, we're going to make its x coordinate 0 again
+        # so the image will just delete itself and come back to 0 again
+        # it will happen so quickly that your eyes wont be able to notice
+        # it'll look like the spaceship cant go beyond 0
+        # but actually, everytime it crosses 0, we bring the x coordinate back to 0 again
+        # similarly with everytime it goes toward right and crosses 800
+        # it reaches 800, goes one step beyond, we delete it and create a new spaceship to fit till 800th pixel
+
+    playerX += playerX_change
+
+    if playerX <= 0:
+        playerX = 0
+
+    elif playerX >= 736:  # 800-64=736 pixels
+        playerX = 736
+
+    player(playerX, playerY)
+
+    # now for enemy movement:
+    for i in range (num_of_enemies):
+
+        #Game Over
+        if ( (enemyY[i] > 420) and (abs(enemyX[i] - playerX)>30 and abs(enemyX[i] - playerX)<34) ): #if enemy reaches the spaceship, then all enemies should go out of screen
+            #if y coordinate of enemy reaches below a certain level AND x coordinate gets in close proximity to the spaceship, then its game over
+            #this close proximity can be min 0 and max 64, i have selected 30 to 34
+            #so that it'll get over when enemy comes approximately in middle of spaceship
+            for j in range (num_of_enemies): #loop for all enemies
+                enemyY[j] = 2000 #ensures that the enemies go below the screen
+            game_over_text()
+            break
+
+        enemyX[i] += enemyX_change[i]
+        # see, change in x coordinate is 0.3 as defined at the start of the code
+        # and we're adding, means, on the first go after the game starts, enemy will move toward right only
+        # then it'll hit the end and move toward left
+
+        # if the enemy hits any boundary (left or right), it should come down
+
+        # also if the enemy hits extreme right end of window, it should move towards left
+        if enemyX[i] >= 736:  # 800-64=736 pixels
+            enemyX_change[i] = -0.35
+            enemyY[i] += enemyY_change[i]
+
+        # if the enemy hits extreme left, we want to to change direction and move toward right now
+        elif enemyX[i] <= 0:
+            enemyX_change[i] = 0.35
+            enemyY[i] += enemyY_change[i]
+
+        # for collision
+        collision = isCollision(enemyX[i], enemyY[i], bulletX,
+                                bulletY)  # this variable collision will store True or False
+        if collision:
+
+            explosion_Sound = mixer.Sound('explosion.wav')
+            explosion_Sound.play()
+
+            bulletY = 480  # we're resetting the y position of bullet to 480
+            bullet_state = 'ready'  # bullet should disappear from screen, so we make the state as ready
+            score_value += 1  # increases score by 1 every time we kill our enemy
+
+
+            # now the below code will respawn the enemy in any random location
+            enemyX[i] = random.randint(0, 736)
+            enemyY[i] = random.randint(0, 380)
+
+        enemy(enemyX[i], enemyY[i], i)
+
+    # Bullet movement:
+
+    # when the bullet reaches top of screen (y coordinate=0), it just continues to go on the negative values
+    # we havent given a condition on what to do as it reaches the top
+    # so below we write an if condition, that whenever y coordinate reaches 0, we reset it to 480
+    # 480 is the y coordinate of spaceship which never changes
+    # so by resetting the y coordinate of bullet, what we are doing is, we are making the next bullet ready
+    # so the next bullet can fire from the spaceship, starting at 480th pixel
+    # after resetting the y coordinate of bullet to 480, we change its state to ready
+    # so if state is ready, it wont go into the bullet_state == 'fire' loop
+    # and therefore it wont move any further into negative scale
+    # had we not written the bulletY<=0 condition, the bullet_state=='fire' loop would be able to shoot only one bullet
+    # you cant shoot any more
+
+    if bulletY <= 0:
+        bulletY = 480
+        bullet_state = 'ready'
+
+    if bullet_state == 'fire':
+        # fire_bullet(playerX, bulletY)  #everytime we call the function, bullet_state= 'fire' makes sure the state stays in fire only, so it stays in this loop
+        # bulletY-=bulletY_change
+
+        # what is happening above is, we have given playerX, that is the x position of spaceship, as argument to the fire_bullet function
+        # this creates a problem
+        # as we move our spaceship to the left or right, the bullet will also move continuously in the same way after its fired
+        # but we want it to move in the same x coordinate after being fired regardless of where the spaceship moves
+        # so every bullet, wherever the spaceship is on the screen, should have the same x coordinate as the starting x coordinate of the spaceship.
+        # mind you, we cant just hardcode and give 370 as the parameter here. It is the starting x coordinate of the spaceship ONLY at the beginning of the game
+        # we will move the spaceship later and shoot the bullet
+        # so the initial x coordinate of the spaceshup will change then, THAT coordinate should be the bullet's x coordinate throughtout
+
+        # everytime we call the above function, the updated y coordinate is being given as parameter
+        # so blit (x+16, y+10) is actually showing the updated coordinates
+        # playerX is in turn getting updated as the spaceship moves in x
+
+        # also, above block of if condition can fire only one bullet
+
+        # to solve the x coordinate problem:
+        fire_bullet(bulletX, bulletY)  # we give bulletX as parameter, which is a fixed value
+        # so x coordinate of bullet wont update in blit (x+16,y+10), only y coordinate will update as follows
+        bulletY -= bulletY_change
+
+        # but there is one more problem.
+        # with above code, say you fire the bullet
+        # before the bullet reaches top of the screen, you move the spaceship
+        # and you press spacebar again
+        # this will change the x coordinate of the already fired bullet
+        # everytime you press spacebar, the coordinate of bullet changes to the current starting coordinate of spaceship
+        # so to rectify this, we should put a condition that if the bullet state is ready, only then we can fire another bullet
+        # so this will make sure that we cant fire another bullet when one is already in action
+        # means even if we press spacebar, the already fired bullet wont change its state
+        # when the fired bullet reaches the top of the screen, its state changes to ready
+        # only then, we can fire the next bullet
+        # so lets do that in the if event.key==space condition
+
+
+
+    # we call player() after screen.fill and then update the screen display, so that player comes on top of the filled screen
+    # if we put player() then screen.fill, then player will go underneath the screen
+
+    player(playerX, playerY)
+
+    show_score(textX, textY)
+
+    pygame.display.update()  # after we are done calling the drawing functions, we call this function to display the entire surface area on the user's monitor
